@@ -458,6 +458,157 @@ class GeneratedDocumentResponse(BaseModel):
     created_at: datetime
 
 
+# Analytics schemas
+class ProcessingMetricsResponse(BaseModel):
+    """Aggregated processing metrics."""
+
+    total_documents: int
+    total_replacements: int
+    total_processing_time_ms: int
+    total_tokens_used: int
+    total_cache_hits: int
+    total_cache_misses: int
+    avg_processing_time_ms: float
+    avg_replacements_per_doc: float
+    cache_hit_rate: float
+    estimated_cost_usd: float
+
+
+class DailyMetricsResponse(BaseModel):
+    """Metrics for a single day."""
+
+    date: datetime
+    documents_processed: int
+    total_replacements: int
+    tokens_used: int
+    avg_processing_time_ms: float
+
+
+class TopReplacementResponse(BaseModel):
+    """A frequently occurring replacement."""
+
+    original_term: str
+    replacement_term: str
+    occurrence_count: int
+    avg_confidence: float
+    category: str | None = None
+
+
+class TermPatternResponse(BaseModel):
+    """A term replacement pattern from cache."""
+
+    original_term: str
+    replacement_term: str
+    total_uses: int
+    avg_confidence: float
+    category: str | None = None
+    is_high_confidence: bool
+
+
+class AmbiguousTermResponse(BaseModel):
+    """A term with multiple/inconsistent replacements."""
+
+    term: str
+    occurrence_count: int
+    unique_replacements: int
+    avg_confidence: float
+    replacements: list[str]
+
+
+class CacheStatsResponse(BaseModel):
+    """Cache performance statistics."""
+
+    total_hits: int
+    total_misses: int
+    hit_rate: float
+    api_calls_saved: int
+
+
+class AnalyticsDashboardResponse(BaseModel):
+    """Complete analytics dashboard."""
+
+    daily_metrics: list[DailyMetricsResponse]
+    weekly_total: ProcessingMetricsResponse
+    monthly_total: ProcessingMetricsResponse
+    all_time_total: ProcessingMetricsResponse
+    top_replacements: list[TopReplacementResponse]
+    high_confidence_patterns: list[TermPatternResponse]
+    ambiguous_terms: list[AmbiguousTermResponse]
+    cache_stats: CacheStatsResponse
+    total_corrections: int
+    correction_rate: float
+    estimated_monthly_cost_usd: float
+
+
+# User Correction schemas
+class CorrectionCreate(BaseModel):
+    """Schema for creating a user correction."""
+
+    original_term: str
+    suggested_replacement: str
+    suggested_confidence: float = Field(ge=0.0, le=1.0)
+    correction_type: str = Field(pattern="^(rejected|modified|accepted)$")
+    user_replacement: str | None = None
+    user_reason: str | None = None
+    context_before: str | None = None
+    context_after: str | None = None
+    processing_log_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
+
+
+class CorrectionResponse(TimestampSchema):
+    """Schema for a user correction."""
+
+    id: uuid.UUID
+    original_term: str
+    suggested_replacement: str
+    suggested_confidence: float
+    correction_type: str
+    user_replacement: str | None
+    user_reason: str | None
+    context_before: str | None
+    context_after: str | None
+    processing_log_id: uuid.UUID | None
+    document_id: uuid.UUID | None
+    processed: bool
+
+
+class CorrectionListResponse(BaseModel):
+    """Schema for paginated correction list."""
+
+    items: list[CorrectionResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+# Processing Log schemas
+class ProcessingLogResponse(TimestampSchema):
+    """Schema for a processing log entry."""
+
+    id: uuid.UUID
+    document_id: uuid.UUID | None
+    total_replacements: int
+    processing_time_ms: int
+    tokens_used: int
+    cache_hits: int
+    cache_misses: int
+    document_word_count: int | None
+    document_type: str | None
+    chunks_processed: int
+    status: str
+    error_message: str | None
+
+
+class ProcessingLogListResponse(BaseModel):
+    """Schema for paginated processing log list."""
+
+    items: list[ProcessingLogResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 # Health check schemas
 class HealthResponse(BaseModel):
     """Schema for health check response."""

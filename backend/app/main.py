@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.middleware.logging import RequestLoggingMiddleware, configure_logging
-from app.api.routes import auth, documents, document_processing, health, reference_examples, reference_library
+from app.api.routes import analytics, auth, documents, document_processing, health, reference_examples, reference_library
 from app.config import get_settings
 from app.core.exceptions import AppException
 from app.models.schemas import ErrorResponse, ValidationErrorResponse
@@ -123,6 +123,7 @@ def create_application() -> FastAPI:
     app.include_router(reference_library.router, prefix=settings.api_prefix)
     app.include_router(reference_examples.router, prefix=settings.api_prefix)
     app.include_router(document_processing.router, prefix=settings.api_prefix)
+    app.include_router(analytics.router, prefix=settings.api_prefix)
 
     return app
 

@@ -1,6 +1,7 @@
 """Document AI processing routes for term replacement analysis."""
 
 import io
+import time
 import uuid
 from typing import Annotated
 
@@ -23,6 +24,7 @@ from app.models.schemas import (
     ReplacementMatchDetail,
     TermReplacementItem,
 )
+from app.services.analytics_service import AnalyticsService, get_analytics_service
 from app.services.document_ai_processor import (
     DocumentAIProcessor,
     TermReplacement,
@@ -36,6 +38,7 @@ from app.services.document_generator import (
 from app.services.document_parser import DocumentContent, get_document_parser
 from app.services.file_storage import FileStorageService, get_file_storage_service
 from app.services.pgvector_store import PgVectorStore, get_pgvector_store
+from app.services.term_cache import TermCache, get_term_cache
 
 router = APIRouter(prefix="/process", tags=["document-processing"])
 
@@ -396,19 +399,26 @@ async def process_document(
     db: Annotated[AsyncSession, Depends(get_db_session)],
     pgvector: Annotated[PgVectorStore, Depends(get_pgvector_store)],
     storage: Annotated[FileStorageService, Depends(get_file_storage_service)],
+    analytics: Annotated[AnalyticsService, Depends(get_analytics_service)],
 ) -> ProcessDocumentResponse:
     """Process a document through the full pipeline.
 
     This endpoint:
     1. Retrieves the original document
-    2. Analyzes it for term replacements using Claude
-    3. Generates a DOCX with replacements applied (preserving formatting for DOCX input)
-    4. Optionally generates a changes report
-    5. Stores the output files and returns their IDs
+    2. Checks cache for known replacements
+    3. Analyzes it for term replacements using Claude (for uncached terms)
+    4. Generates a DOCX with replacements applied (preserving formatting for DOCX input)
+    5. Optionally generates a changes report
+    6. Stores the output files and returns their IDs
+    7. Logs analytics and caches successful replacements
 
     For DOCX input files, formatting is preserved.
     For PDF input files, a clean DOCX is generated with the modified text.
     """
+    start_time = time.time()
+    cache_hits = 0
+    cache_misses = 0
+
     # Get the document
     result = await db.execute(
         select(Document).where(
@@ -474,10 +484,51 @@ async def process_document(
             protected_terms=request.protected_terms,
         )
     except AIServiceError as e:
+        # Log failed processing
+        await analytics.log_processing(
+            db=db,
+            owner_id=current_user.id,
+            document_id=document.id,
+            processed_document_id=None,
+            total_replacements=0,
+            processing_time_ms=int((time.time() - start_time) * 1000),
+            tokens_used=0,
+            cache_hits=cache_hits,
+            cache_misses=cache_misses,
+            document_word_count=document_content.word_count,
+            document_type=document.file_type,
+            chunks_processed=0,
+            replacements_made=None,
+            warnings=None,
+            reference_examples_used=[str(e.id) for e in reference_examples],
+            status="failed",
+            error_message=str(e),
+        )
+        await db.commit()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Analysis failed: {e}",
         )
+
+    # Cache successful replacements for future use
+    term_cache = get_term_cache()
+    for replacement in analysis_result.replacements:
+        if replacement.confidence >= request.min_confidence:
+            # Get context around the term for cache key
+            term_pos = document_content.full_text.lower().find(replacement.original_term.lower())
+            if term_pos >= 0:
+                context_start = max(0, term_pos - 50)
+                context_end = min(len(document_content.full_text), term_pos + len(replacement.original_term) + 50)
+                context = document_content.full_text[context_start:context_end]
+
+                await term_cache.cache_replacement(
+                    owner_id=str(current_user.id),
+                    term=replacement.original_term,
+                    context=context,
+                    replacement=replacement.replacement_term,
+                    confidence=replacement.confidence,
+                    category=replacement.category,
+                )
 
     # Generate DOCX with replacements
     generator = get_document_generator()
@@ -585,6 +636,46 @@ async def process_document(
             db.add(report_doc)
             await db.flush()
             changes_report_id = report_doc.id
+
+        # Log successful processing for analytics
+        processing_time_ms = int((time.time() - start_time) * 1000)
+        await analytics.log_processing(
+            db=db,
+            owner_id=current_user.id,
+            document_id=document.id,
+            processed_document_id=output_file_id,
+            total_replacements=gen_result.total_replacements_applied,
+            processing_time_ms=processing_time_ms,
+            tokens_used=0,  # Would need to track from AI processor
+            cache_hits=cache_hits,
+            cache_misses=cache_misses,
+            document_word_count=document_content.word_count,
+            document_type=document.file_type,
+            chunks_processed=analysis_result.total_chunks,
+            replacements_made=[
+                {
+                    "original_term": r.original_term,
+                    "replacement_term": r.replacement_term,
+                    "confidence": r.confidence,
+                    "category": r.category,
+                    "reasoning": r.reasoning,
+                }
+                for r in analysis_result.replacements
+                if r.confidence >= request.min_confidence
+            ],
+            warnings=analysis_result.warnings + gen_result.warnings,
+            reference_examples_used=[str(e.id) for e in reference_examples],
+            status="completed",
+            error_message=None,
+        )
+
+        # Record cache stats
+        await term_cache.record_cache_stats(
+            owner_id=str(current_user.id),
+            hits=cache_hits,
+            misses=cache_misses,
+            api_calls_saved=cache_hits,  # Each cache hit is an API call saved
+        )
 
         await db.commit()
 

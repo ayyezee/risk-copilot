@@ -257,6 +257,104 @@ class ProcessedDocument(Base, TimestampMixin):
     )
 
 
+class ProcessingLog(Base, TimestampMixin):
+    """Log of document processing operations for analytics and learning.
+
+    Tracks metrics, replacements made, and serves as the foundation
+    for the learning system that improves over time.
+    """
+
+    __tablename__ = "processing_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    processed_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("processed_documents.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Processing metrics
+    total_replacements: Mapped[int] = mapped_column(Integer, default=0)
+    processing_time_ms: Mapped[int] = mapped_column(Integer, default=0)
+    tokens_used: Mapped[int] = mapped_column(Integer, default=0)
+    cache_hits: Mapped[int] = mapped_column(Integer, default=0)
+    cache_misses: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Document info
+    document_word_count: Mapped[int | None] = mapped_column(Integer)
+    document_type: Mapped[str | None] = mapped_column(String(50))  # "docx", "pdf", etc.
+    chunks_processed: Mapped[int] = mapped_column(Integer, default=1)
+
+    # For learning - full details stored as JSON
+    replacements_made: Mapped[dict | None] = mapped_column(JSON)  # List of replacement details
+    warnings: Mapped[list[str] | None] = mapped_column(ARRAY(String))
+    reference_examples_used: Mapped[list[str] | None] = mapped_column(ARRAY(String))  # UUIDs
+
+    # Status
+    status: Mapped[str] = mapped_column(String(50), default="completed")  # completed, failed, partial
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    # Relationships
+    owner: Mapped["User"] = relationship()
+    document: Mapped["Document"] = relationship()
+    processed_document: Mapped["ProcessedDocument"] = relationship()
+
+    __table_args__ = (
+        Index("ix_processing_logs_owner_id", "owner_id"),
+        Index("ix_processing_logs_document_id", "document_id"),
+        Index("ix_processing_logs_created_at", "created_at"),
+    )
+
+
+class UserCorrection(Base, TimestampMixin):
+    """User corrections to AI-suggested replacements for learning.
+
+    When users mark a replacement as incorrect or modify it,
+    this feedback is stored to improve future suggestions.
+    """
+
+    __tablename__ = "user_corrections"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    processing_log_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("processing_logs.id", ondelete="SET NULL"), nullable=True
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # The original AI suggestion
+    original_term: Mapped[str] = mapped_column(Text, nullable=False)
+    suggested_replacement: Mapped[str] = mapped_column(Text, nullable=False)
+    suggested_confidence: Mapped[float] = mapped_column(nullable=False)
+
+    # User's correction
+    correction_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Types: "rejected" (don't replace), "modified" (different replacement), "accepted" (confirmed correct)
+    user_replacement: Mapped[str | None] = mapped_column(Text)  # For "modified" type
+    user_reason: Mapped[str | None] = mapped_column(Text)  # Optional explanation
+
+    # Context for learning
+    context_before: Mapped[str | None] = mapped_column(Text)  # Text before the term
+    context_after: Mapped[str | None] = mapped_column(Text)  # Text after the term
+
+    # Whether this correction has been processed by the learning system
+    processed: Mapped[bool] = mapped_column(Boolean, default=False)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Relationships
+    owner: Mapped["User"] = relationship()
+
+    __table_args__ = (
+        Index("ix_user_corrections_owner_id", "owner_id"),
+        Index("ix_user_corrections_original_term", "original_term"),
+        Index("ix_user_corrections_processed", "processed"),
+    )
+
+
 # Database engine and session factory (lazy initialization)
 _engine = None
 _async_session_factory = None
