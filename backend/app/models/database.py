@@ -92,6 +92,7 @@ class User(Base, TimestampMixin):
     documents: Mapped[list["Document"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     reference_items: Mapped[list["ReferenceItem"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     reference_examples: Mapped[list["ReferenceExample"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
+    processed_documents: Mapped[list["ProcessedDocument"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
@@ -212,6 +213,47 @@ class ReferenceExample(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_reference_examples_owner_id", "owner_id"),
         Index("ix_reference_examples_name", "name"),
+    )
+
+
+class ProcessedDocument(Base, TimestampMixin):
+    """Processed/generated document output.
+
+    Stores the output of document processing pipelines, including
+    DOCX files with applied replacements and changes reports.
+    """
+
+    __tablename__ = "processed_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    source_document_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # File metadata
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    content_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    # Processing metadata
+    document_type: Mapped[str] = mapped_column(String(50), nullable=False)  # "processed", "changes_report"
+    source_format: Mapped[str] = mapped_column(String(50), nullable=False)  # "docx", "pdf"
+    total_replacements: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Details stored as JSON
+    replacement_details: Mapped[dict | None] = mapped_column(JSON)  # List of ReplacementMatchDetail
+    warnings: Mapped[list[str] | None] = mapped_column(ARRAY(String))
+    processing_summary: Mapped[str | None] = mapped_column(Text)
+
+    # Relationships
+    owner: Mapped["User"] = relationship(back_populates="processed_documents")
+    source_document: Mapped["Document"] = relationship()
+
+    __table_args__ = (
+        Index("ix_processed_documents_owner_id", "owner_id"),
+        Index("ix_processed_documents_source_document_id", "source_document_id"),
     )
 
 

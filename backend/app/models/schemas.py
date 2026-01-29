@@ -396,6 +396,68 @@ class ApplyReplacementsResponse(BaseModel):
     total_replacements: int
 
 
+# Document Processing Pipeline schemas
+class ProcessDocumentRequest(BaseModel):
+    """Schema for triggering the full document processing pipeline."""
+
+    reference_example_ids: list[uuid.UUID] | None = None  # Specific examples to use
+    top_k_examples: int = Field(default=3, ge=1, le=10)  # Or find top-k similar
+    protected_terms: list[str] = Field(default_factory=list)
+    min_confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+    highlight_changes: bool = True
+    generate_changes_report: bool = True
+
+
+class ProcessingJobStatus(BaseModel):
+    """Schema for processing job status."""
+
+    job_id: uuid.UUID
+    document_id: uuid.UUID
+    status: str  # "pending", "analyzing", "generating", "completed", "failed"
+    progress: int = Field(ge=0, le=100)  # Percentage complete
+    message: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class ProcessDocumentResponse(BaseModel):
+    """Schema for document processing response (when processing completes)."""
+
+    document_id: uuid.UUID
+    status: str
+    total_replacements: int
+    replacements: list[TermReplacementItem]
+    warnings: list[str]
+    summary: str | None = None
+    output_file_id: uuid.UUID | None = None  # ID of the generated DOCX
+    changes_report_id: uuid.UUID | None = None  # ID of the changes report
+
+
+class ReplacementMatchDetail(BaseModel):
+    """Schema for detailed replacement match information."""
+
+    original_term: str
+    replacement_term: str
+    paragraph_index: int
+    location_description: str
+    reasoning: str
+    confidence: float
+
+
+class GeneratedDocumentResponse(BaseModel):
+    """Schema for generated document information."""
+
+    id: uuid.UUID
+    filename: str
+    content_type: str
+    file_size: int
+    total_replacements_applied: int
+    source_format: str  # "docx" or "pdf"
+    replacement_details: list[ReplacementMatchDetail]
+    warnings: list[str]
+    created_at: datetime
+
+
 # Health check schemas
 class HealthResponse(BaseModel):
     """Schema for health check response."""
