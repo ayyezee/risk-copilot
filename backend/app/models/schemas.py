@@ -1,0 +1,439 @@
+"""Pydantic schemas for request/response validation."""
+
+import uuid
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+# Base schemas
+class BaseSchema(BaseModel):
+    """Base schema with common configuration."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TimestampSchema(BaseSchema):
+    """Schema with timestamp fields."""
+
+    created_at: datetime
+    updated_at: datetime
+
+
+# Auth schemas
+class UserCreate(BaseModel):
+    """Schema for user registration."""
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    full_name: str | None = Field(None, max_length=255)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+
+
+class UserLogin(BaseModel):
+    """Schema for user login."""
+
+    email: EmailStr
+    password: str
+    totp_code: str | None = None
+
+
+class UserResponse(TimestampSchema):
+    """Schema for user response."""
+
+    id: uuid.UUID
+    email: str
+    full_name: str | None
+    is_active: bool
+    is_verified: bool
+    totp_enabled: bool
+
+
+class TokenResponse(BaseModel):
+    """Schema for token response."""
+
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+class TokenRefresh(BaseModel):
+    """Schema for token refresh request."""
+
+    refresh_token: str
+
+
+class PasswordChange(BaseModel):
+    """Schema for password change."""
+
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+# 2FA schemas
+class TwoFactorSetupResponse(BaseModel):
+    """Schema for 2FA setup response."""
+
+    secret: str
+    qr_code_base64: str
+    backup_codes: list[str]
+
+
+class TwoFactorVerify(BaseModel):
+    """Schema for 2FA verification."""
+
+    code: str = Field(min_length=6, max_length=6)
+
+
+class TwoFactorBackupCode(BaseModel):
+    """Schema for using a backup code."""
+
+    backup_code: str
+
+
+# Document schemas
+class DocumentUploadResponse(BaseSchema):
+    """Schema for document upload response."""
+
+    id: uuid.UUID
+    filename: str
+    original_filename: str
+    file_type: str
+    file_size: int
+    status: str
+
+
+class DocumentResponse(TimestampSchema):
+    """Schema for document response."""
+
+    id: uuid.UUID
+    filename: str
+    original_filename: str
+    file_type: str
+    file_size: int
+    mime_type: str
+    status: str
+    error_message: str | None
+    summary: str | None
+    page_count: int | None
+    metadata: dict[str, Any] | None = Field(None, validation_alias="doc_metadata")
+
+
+class DocumentListResponse(BaseModel):
+    """Schema for paginated document list."""
+
+    items: list[DocumentResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class DocumentProcessRequest(BaseModel):
+    """Schema for document processing request."""
+
+    generate_summary: bool = True
+    extract_metadata: bool = True
+    index_for_search: bool = True
+
+
+class DocumentQueryRequest(BaseModel):
+    """Schema for semantic document query."""
+
+    query: str = Field(min_length=1, max_length=1000)
+    document_ids: list[uuid.UUID] | None = None
+    top_k: int = Field(default=5, ge=1, le=20)
+
+
+class DocumentQueryResult(BaseModel):
+    """Schema for document query result."""
+
+    document_id: uuid.UUID
+    filename: str
+    content: str
+    score: float
+    metadata: dict[str, Any] | None
+
+
+class DocumentQueryResponse(BaseModel):
+    """Schema for document query response."""
+
+    query: str
+    results: list[DocumentQueryResult]
+    answer: str | None = None
+
+
+class DocumentSectionResponse(BaseModel):
+    """Schema for a parsed document section."""
+
+    element_type: str
+    content: str
+    page_number: int | None = None
+    metadata: dict[str, Any] = {}
+
+
+class DocumentParseResponse(BaseModel):
+    """Schema for document parsing response."""
+
+    id: uuid.UUID
+    filename: str
+    original_filename: str
+    file_type: str
+    file_size: int
+    status: str
+    title: str | None = None
+    full_text: str
+    sections: list[DocumentSectionResponse]
+    page_count: int | None = None
+    word_count: int = 0
+    headers: list[str] = []
+    tables: list[dict[str, Any]] = []
+    footnotes: list[str] = []
+    metadata: dict[str, Any] = {}
+    warnings: list[str] = []
+
+
+# Reference Library schemas
+class ReferenceItemCreate(BaseModel):
+    """Schema for creating a reference item."""
+
+    title: str = Field(min_length=1, max_length=255)
+    content: str = Field(min_length=1)
+    category: str | None = Field(None, max_length=100)
+    tags: list[str] | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class ReferenceItemUpdate(BaseModel):
+    """Schema for updating a reference item."""
+
+    title: str | None = Field(None, min_length=1, max_length=255)
+    content: str | None = Field(None, min_length=1)
+    category: str | None = Field(None, max_length=100)
+    tags: list[str] | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class ReferenceItemResponse(TimestampSchema):
+    """Schema for reference item response."""
+
+    id: uuid.UUID
+    title: str
+    content: str
+    category: str | None
+    tags: list[str] | None
+    metadata: dict[str, Any] | None = Field(None, validation_alias="item_metadata")
+
+
+class ReferenceItemListResponse(BaseModel):
+    """Schema for paginated reference item list."""
+
+    items: list[ReferenceItemResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class ReferenceSearchRequest(BaseModel):
+    """Schema for semantic reference search."""
+
+    query: str = Field(min_length=1, max_length=500)
+    category: str | None = None
+    tags: list[str] | None = None
+    top_k: int = Field(default=10, ge=1, le=50)
+
+
+class ReferenceSearchResult(BaseModel):
+    """Schema for reference search result."""
+
+    item: ReferenceItemResponse
+    score: float
+
+
+class ReferenceSearchResponse(BaseModel):
+    """Schema for reference search response."""
+
+    query: str
+    results: list[ReferenceSearchResult]
+
+
+# Reference Example schemas (for pgvector-based semantic search)
+class ReferenceExampleCreate(BaseModel):
+    """Schema for creating a reference example with before/after document pair."""
+
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    original_text: str = Field(min_length=1)
+    converted_text: str = Field(min_length=1)
+    original_filename: str | None = Field(None, max_length=255)
+    converted_filename: str | None = Field(None, max_length=255)
+
+
+class ReferenceExampleResponse(TimestampSchema):
+    """Schema for reference example response."""
+
+    id: uuid.UUID
+    name: str
+    description: str | None
+    original_text: str
+    converted_text: str
+    term_mappings: dict[str, Any] | None
+    original_filename: str | None
+    converted_filename: str | None
+    original_file_type: str | None
+    converted_file_type: str | None
+
+
+class ReferenceExampleListResponse(BaseModel):
+    """Schema for paginated reference example list."""
+
+    items: list[ReferenceExampleResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class ReferenceExampleSearchRequest(BaseModel):
+    """Schema for semantic search of reference examples."""
+
+    query: str = Field(min_length=1, max_length=10000)
+    top_k: int = Field(default=3, ge=1, le=20)
+    similarity_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class ReferenceExampleSearchResult(BaseModel):
+    """Schema for a single search result with similarity score."""
+
+    example: ReferenceExampleResponse
+    similarity: float
+
+
+class ReferenceExampleSearchResponse(BaseModel):
+    """Schema for reference example search response."""
+
+    query: str
+    results: list[ReferenceExampleSearchResult]
+
+
+class TermMapping(BaseModel):
+    """Schema for a single term mapping."""
+
+    original_term: str
+    converted_term: str
+    context: str | None = None
+    category: str | None = None  # e.g., "legal", "financial", "technical"
+
+
+class TermMappingsResponse(BaseModel):
+    """Schema for term mappings extracted from a reference example."""
+
+    example_id: uuid.UUID
+    mappings: list[TermMapping]
+    summary: str | None = None
+
+
+# Document AI Processing schemas
+class TermReplacementItem(BaseModel):
+    """Schema for a single term replacement identified by AI."""
+
+    original_term: str
+    replacement_term: str
+    reasoning: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    category: str | None = None
+
+
+class DocumentAnalysisRequest(BaseModel):
+    """Schema for document analysis request."""
+
+    document_id: uuid.UUID | None = None  # Use existing document
+    document_text: str | None = None  # Or provide text directly
+    reference_example_ids: list[uuid.UUID] | None = None  # Specific examples to use
+    top_k_examples: int = Field(default=3, ge=1, le=10)  # Or find top-k similar
+    protected_terms: list[str] = Field(default_factory=list)
+    min_confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+
+
+class DocumentAnalysisResponse(BaseModel):
+    """Schema for document analysis response."""
+
+    replacements: list[TermReplacementItem]
+    warnings: list[str]
+    summary: str | None = None
+    chunks_processed: int
+    total_chunks: int
+    document_id: uuid.UUID | None = None
+
+
+class ApplyReplacementsRequest(BaseModel):
+    """Schema for applying replacements to a document."""
+
+    document_id: uuid.UUID | None = None
+    document_text: str | None = None
+    replacements: list[TermReplacementItem]
+    min_confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+
+
+class ApplyReplacementsResponse(BaseModel):
+    """Schema for the result of applying replacements."""
+
+    original_text: str
+    modified_text: str
+    changes_applied: list[dict[str, Any]]
+    total_replacements: int
+
+
+# Health check schemas
+class HealthResponse(BaseModel):
+    """Schema for health check response."""
+
+    status: str
+    version: str
+    environment: str
+
+
+class DetailedHealthResponse(HealthResponse):
+    """Schema for detailed health check response."""
+
+    database: str
+    redis: str
+    vector_store: str
+    storage: str
+
+
+# Error schemas
+class ErrorResponse(BaseModel):
+    """Schema for error response."""
+
+    error_code: str
+    message: str
+    details: dict[str, Any] | None = None
+
+
+class ValidationErrorDetail(BaseModel):
+    """Schema for validation error detail."""
+
+    loc: list[str | int]
+    msg: str
+    type: str
+
+
+class ValidationErrorResponse(BaseModel):
+    """Schema for validation error response."""
+
+    error_code: str = "ValidationError"
+    message: str = "Validation failed"
+    details: list[ValidationErrorDetail]
