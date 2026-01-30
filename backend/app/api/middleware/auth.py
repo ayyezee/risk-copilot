@@ -103,6 +103,48 @@ def require_2fa_if_enabled(
     return current_user
 
 
+async def get_current_user_ws(
+    token: str,
+    db: AsyncSession,
+) -> User:
+    """Get current user from a token string (for WebSocket authentication).
+
+    Unlike the regular get_current_user, this takes the token directly
+    rather than from HTTP headers, since WebSocket connections pass
+    auth tokens via query params.
+
+    Args:
+        token: The JWT access token
+        db: Database session
+
+    Returns:
+        The authenticated User
+
+    Raises:
+        AuthenticationError: If authentication fails
+    """
+    try:
+        payload = decode_token(token, token_type="access")
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise AuthenticationError("Invalid token payload")
+
+        result = await db.execute(
+            select(User).where(User.id == uuid.UUID(user_id))
+        )
+        user = result.scalar_one_or_none()
+
+        if user is None:
+            raise AuthenticationError("User not found")
+
+        if not user.is_active:
+            raise AuthenticationError("User account is disabled")
+
+        return user
+    except ValueError as e:
+        raise AuthenticationError(str(e)) from e
+
+
 # Type aliases for dependency injection
 CurrentUser = Annotated[User, Depends(get_current_user)]
 ActiveUser = Annotated[User, Depends(get_current_active_user)]

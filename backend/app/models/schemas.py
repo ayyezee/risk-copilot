@@ -609,6 +609,76 @@ class ProcessingLogListResponse(BaseModel):
     page_size: int
 
 
+# Batch Processing schemas
+class BatchCreateRequest(BaseModel):
+    """Schema for creating a batch processing job."""
+
+    reference_example_ids: list[uuid.UUID] | None = None
+    protected_terms: list[str] = Field(default_factory=list)
+    min_confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+    highlight_changes: bool = True
+    generate_changes_report: bool = True
+
+
+class BatchDocumentStatus(BaseModel):
+    """Schema for a single document's status in a batch."""
+
+    id: uuid.UUID
+    original_filename: str
+    file_type: str
+    file_size: int
+    status: str
+    error_message: str | None = None
+    processing_time_ms: int | None = None
+    total_replacements: int = 0
+    sequence_number: int
+
+
+class BatchJobResponse(TimestampSchema):
+    """Schema for batch job response."""
+
+    id: uuid.UUID
+    status: str
+    total_documents: int
+    processed_documents: int
+    failed_documents: int
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
+    has_output_zip: bool = False
+
+
+class BatchJobDetailResponse(BatchJobResponse):
+    """Schema for detailed batch job response with documents."""
+
+    documents: list[BatchDocumentStatus]
+    min_confidence: float
+    highlight_changes: bool
+    generate_changes_report: bool
+
+
+class BatchProgressResponse(BaseModel):
+    """Schema for real-time batch progress updates."""
+
+    batch_id: uuid.UUID
+    status: str
+    total_documents: int
+    processed_documents: int
+    failed_documents: int
+    current_document: str | None = None
+    percentage: float
+    estimated_remaining_seconds: int | None = None
+
+
+class BatchListResponse(BaseModel):
+    """Schema for paginated batch job list."""
+
+    items: list[BatchJobResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 # Health check schemas
 class HealthResponse(BaseModel):
     """Schema for health check response."""

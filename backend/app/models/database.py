@@ -61,6 +61,17 @@ class DocumentStatus(StrEnum):
     FAILED = "failed"
 
 
+class BatchStatus(StrEnum):
+    """Status of a batch processing job."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PARTIAL = "partial"  # Some documents failed
+    CANCELLED = "cancelled"
+
+
 class DocumentType(StrEnum):
     """Type of document."""
 
@@ -355,6 +366,103 @@ class UserCorrection(Base, TimestampMixin):
     )
 
 
+class BatchJob(Base, TimestampMixin):
+    """Batch processing job for multiple documents.
+
+    Tracks overall progress and status of a batch of documents
+    being processed together.
+    """
+
+    __tablename__ = "batch_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    # Job status
+    status: Mapped[str] = mapped_column(String(50), default=BatchStatus.PENDING, nullable=False)
+
+    # Progress tracking
+    total_documents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    processed_documents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_documents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Processing configuration
+    reference_example_ids: Mapped[list[str] | None] = mapped_column(ARRAY(String))
+    protected_terms: Mapped[list[str] | None] = mapped_column(ARRAY(String))
+    min_confidence: Mapped[float] = mapped_column(default=0.7, nullable=False)
+    highlight_changes: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    generate_changes_report: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Timing
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Output
+    output_zip_path: Mapped[str | None] = mapped_column(String(500))  # Path to ZIP file when complete
+
+    # Error info
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    # Relationships
+    owner: Mapped["User"] = relationship()
+    documents: Mapped[list["BatchJobDocument"]] = relationship(
+        back_populates="batch_job", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("ix_batch_jobs_owner_id", "owner_id"),
+        Index("ix_batch_jobs_status", "status"),
+        Index("ix_batch_jobs_created_at", "created_at"),
+    )
+
+
+class BatchJobDocument(Base, TimestampMixin):
+    """Individual document within a batch job.
+
+    Tracks the processing status and results for each document
+    in a batch.
+    """
+
+    __tablename__ = "batch_job_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    batch_job_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("batch_jobs.id", ondelete="CASCADE"), nullable=False
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True
+    )
+    processed_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("processed_documents.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Document info
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Processing status
+    status: Mapped[str] = mapped_column(String(50), default=DocumentStatus.PENDING, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    # Processing metrics
+    processing_time_ms: Mapped[int | None] = mapped_column(Integer)
+    total_replacements: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Order in batch (for consistent ordering)
+    sequence_number: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Relationships
+    batch_job: Mapped["BatchJob"] = relationship(back_populates="documents")
+    document: Mapped["Document"] = relationship()
+    processed_document: Mapped["ProcessedDocument"] = relationship()
+
+    __table_args__ = (
+        Index("ix_batch_job_documents_batch_job_id", "batch_job_id"),
+        Index("ix_batch_job_documents_status", "status"),
+    )
+
+
 # Database engine and session factory (lazy initialization)
 _engine = None
 _async_session_factory = None
@@ -390,3 +498,14 @@ async def get_db_session():
         except Exception:
             await session.rollback()
             raise
+
+
+def get_async_session():
+    """Get an async session context manager for use outside of FastAPI dependency injection.
+
+    Usage:
+        async with get_async_session() as session:
+            # use session
+            await session.commit()
+    """
+    return get_async_session_factory()()
