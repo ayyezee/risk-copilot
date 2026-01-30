@@ -4,7 +4,6 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
-import { Badge } from '../components/ui/badge';
 import {
   Card,
   CardContent,
@@ -36,16 +35,17 @@ import {
   Trash2,
   Search,
   Loader2,
+  ArrowRight,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { BatchTermImport } from '../components/BatchTermImport';
 
 interface ReferenceExample {
   id: string;
   name: string;
-  category?: string;
+  description?: string;
   original_text: string;
-  corrected_text: string;
-  notes?: string;
+  converted_text: string;
   created_at: string;
 }
 
@@ -55,11 +55,12 @@ export function ReferenceLibraryPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     name: '',
-    category: '',
+    description: '',
     original_text: '',
-    corrected_text: '',
-    notes: '',
+    converted_text: '',
   });
+
+  // Note: formData uses 'description' and 'converted_text' to match backend schema
 
   const {
     examples,
@@ -90,10 +91,9 @@ export function ReferenceLibraryPage() {
     setEditingExample(example);
     setFormData({
       name: example.name,
-      category: example.category || '',
+      description: example.description || '',
       original_text: example.original_text,
-      corrected_text: example.corrected_text,
-      notes: example.notes || '',
+      converted_text: example.converted_text,
     });
     setCreateDialogOpen(true);
   };
@@ -113,10 +113,9 @@ export function ReferenceLibraryPage() {
   const resetForm = () => {
     setFormData({
       name: '',
-      category: '',
+      description: '',
       original_text: '',
-      corrected_text: '',
-      notes: '',
+      converted_text: '',
     });
     setEditingExample(null);
   };
@@ -125,7 +124,7 @@ export function ReferenceLibraryPage() {
     (example: ReferenceExample) =>
       example.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       example.original_text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      example.corrected_text.toLowerCase().includes(searchQuery.toLowerCase())
+      example.converted_text.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -137,19 +136,21 @@ export function ReferenceLibraryPage() {
             Manage your reference examples for text processing
           </p>
         </div>
-        <Dialog
-          open={createDialogOpen}
-          onOpenChange={(open) => {
-            setCreateDialogOpen(open);
-            if (!open) resetForm();
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Example
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2">
+          <BatchTermImport />
+          <Dialog
+            open={createDialogOpen}
+            onOpenChange={(open) => {
+              setCreateDialogOpen(open);
+              if (!open) resetForm();
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Single
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>
@@ -176,13 +177,13 @@ export function ReferenceLibraryPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="category">Category (optional)</Label>
+                <Label htmlFor="description">Description (optional)</Label>
                 <Input
-                  id="category"
-                  placeholder="e.g., Grammar, Style, Terminology"
-                  value={formData.category}
+                  id="description"
+                  placeholder="e.g., Legal terminology, Style preference"
+                  value={formData.description}
                   onChange={(e) =>
-                    setFormData({ ...formData, category: e.target.value })
+                    setFormData({ ...formData, description: e.target.value })
                   }
                 />
               </div>
@@ -201,28 +202,15 @@ export function ReferenceLibraryPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="corrected_text">Corrected Text</Label>
+                <Label htmlFor="converted_text">Replacement Text</Label>
                 <Textarea
-                  id="corrected_text"
+                  id="converted_text"
                   placeholder="Text after correction"
-                  value={formData.corrected_text}
+                  value={formData.converted_text}
                   onChange={(e) =>
-                    setFormData({ ...formData, corrected_text: e.target.value })
+                    setFormData({ ...formData, converted_text: e.target.value })
                   }
                   rows={3}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes (optional)</Label>
-                <Textarea
-                  id="notes"
-                  placeholder="Additional context or explanation"
-                  value={formData.notes}
-                  onChange={(e) =>
-                    setFormData({ ...formData, notes: e.target.value })
-                  }
-                  rows={2}
                 />
               </div>
             </div>
@@ -242,7 +230,7 @@ export function ReferenceLibraryPage() {
                 disabled={
                   !formData.name ||
                   !formData.original_text ||
-                  !formData.corrected_text ||
+                  !formData.converted_text ||
                   isCreatingExample ||
                   isUpdatingExample
                 }
@@ -254,7 +242,8 @@ export function ReferenceLibraryPage() {
               </Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </div>
 
       <Card>
@@ -307,51 +296,41 @@ export function ReferenceLibraryPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Original</TableHead>
-                  <TableHead>Corrected</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Original Term</TableHead>
+                  <TableHead className="w-10"></TableHead>
+                  <TableHead>Replacement</TableHead>
+                  <TableHead>Added</TableHead>
+                  <TableHead className="text-right w-24">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredExamples.map((example: ReferenceExample) => (
                   <TableRow key={example.id}>
-                    <TableCell className="font-medium">{example.name}</TableCell>
-                    <TableCell>
-                      {example.category ? (
-                        <Badge variant="outline">{example.category}</Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
+                    <TableCell className="font-mono text-sm">
+                      {example.original_text}
                     </TableCell>
                     <TableCell>
-                      <span className="truncate max-w-[150px] block text-sm text-muted-foreground">
-                        {example.original_text}
-                      </span>
+                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
                     </TableCell>
-                    <TableCell>
-                      <span className="truncate max-w-[150px] block text-sm">
-                        {example.corrected_text}
-                      </span>
+                    <TableCell className="font-mono text-sm font-medium">
+                      {example.converted_text}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
                       {formatDistanceToNow(new Date(example.created_at), {
                         addSuffix: true,
                       })}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex items-center justify-end space-x-2">
+                      <div className="flex items-center justify-end space-x-1">
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => handleEdit(example)}
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => handleDelete(example.id)}
                           disabled={isDeletingExample}

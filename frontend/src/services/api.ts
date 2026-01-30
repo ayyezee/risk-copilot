@@ -81,7 +81,10 @@ export const authApi = {
   register: (email: string, password: string, full_name: string) =>
     api.post('/auth/register', { email, password, full_name }),
 
-  logout: () => api.post('/auth/logout'),
+  logout: () => {
+    const refreshToken = useAuthStore.getState().refreshToken;
+    return api.post('/auth/logout', { refresh_token: refreshToken });
+  },
 
   refreshToken: (refreshToken: string) =>
     api.post('/auth/refresh', { refresh_token: refreshToken }),
@@ -136,32 +139,33 @@ export const documentsApi = {
     api.get(`/processing/processed/${processedDocumentId}/download`, {
       responseType: 'blob',
     }),
+
+  extractTerms: (documentId: string) =>
+    api.post(`/documents/${documentId}/extract-terms`),
 };
 
 // Reference Library API
 export const referenceLibraryApi = {
   listExamples: (params?: { page?: number; page_size?: number; category?: string }) =>
-    api.get('/reference-library/examples', { params }),
+    api.get('/reference-library', { params }),
 
-  getExample: (id: string) => api.get(`/reference-library/examples/${id}`),
+  getExample: (id: string) => api.get(`/reference-library/${id}`),
 
   createExample: (data: {
     name: string;
-    category?: string;
+    description?: string;
     original_text: string;
-    corrected_text: string;
-    notes?: string;
-  }) => api.post('/reference-library/examples', data),
+    converted_text: string;
+  }) => api.post('/reference-library', data),
 
   updateExample: (id: string, data: {
     name?: string;
-    category?: string;
+    description?: string;
     original_text?: string;
-    corrected_text?: string;
-    notes?: string;
-  }) => api.put(`/reference-library/examples/${id}`, data),
+    converted_text?: string;
+  }) => api.put(`/reference-library/${id}`, data),
 
-  deleteExample: (id: string) => api.delete(`/reference-library/examples/${id}`),
+  deleteExample: (id: string) => api.delete(`/reference-library/${id}`),
 
   searchSimilar: (text: string, limit?: number) =>
     api.post('/reference-library/search', { text, limit }),

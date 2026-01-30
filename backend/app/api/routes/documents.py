@@ -26,6 +26,7 @@ from app.models.schemas import (
 from app.services.document_parser import DocumentParser, get_document_parser
 from app.services.document_processor import DocumentProcessor, get_document_processor
 from app.services.file_storage import FileStorageService, get_file_storage_service
+from app.services.term_extractor import extract_defined_terms, ExtractedTerm
 from app.workers.tasks import process_document_task
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -408,3 +409,77 @@ async def query_documents(
         results=results,
         answer=query_result.get("answer"),
     )
+
+
+@router.post("/{document_id}/extract-terms")
+async def extract_document_terms(
+    document_id: uuid.UUID,
+    current_user: ActiveUser,
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, Any]:
+    """Extract defined terms from a document using AI.
+
+    Returns a list of terms with their contexts for the Term Mapper UI.
+    """
+    import traceback
+
+    try:
+        # Get document
+        result = await db.execute(
+            select(Document).where(
+                Document.id == document_id,
+                Document.owner_id == current_user.id,
+            )
+        )
+        document = result.scalar_one_or_none()
+
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
+
+        if not document.extracted_text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Document has not been parsed yet. Upload using /upload endpoint first.",
+            )
+
+        # Get existing reference examples for suggestions
+        from app.models.database import ReferenceExample
+
+        examples_result = await db.execute(
+            select(ReferenceExample).where(ReferenceExample.owner_id == current_user.id)
+        )
+        existing_mappings = [
+            {"original_text": ex.original_text, "converted_text": ex.converted_text}
+            for ex in examples_result.scalars().all()
+        ]
+
+        # Extract terms using AI
+        extracted_terms = await extract_defined_terms(
+            document_text=document.extracted_text,
+            existing_mappings=existing_mappings,
+        )
+
+        return {
+            "document_id": str(document_id),
+            "terms": [
+                {
+                    "term": t.term,
+                    "contexts": t.contexts,
+                    "definition": t.definition,
+                    "suggested_replacement": t.suggested_replacement,
+                }
+                for t in extracted_terms
+            ],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Term extraction error: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to extract terms: {str(e)}",
+        )

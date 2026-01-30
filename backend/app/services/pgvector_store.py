@@ -81,13 +81,14 @@ class PgVectorStore:
                     try:
                         # Embed the original text for similarity search
                         embedding = await self.generate_embedding(example.original_text)
-                    except StorageError:
-                        # AI service not configured, skip embedding
+                    except (StorageError, Exception) as embed_error:
+                        # AI service not configured or embedding failed, skip embedding
                         import structlog
                         logger = structlog.get_logger()
                         logger.warning(
-                            "Skipping embedding generation - AI service not configured",
+                            "Skipping embedding generation",
                             example_id=str(example.id),
+                            error=str(embed_error),
                         )
                         embedding = None
 

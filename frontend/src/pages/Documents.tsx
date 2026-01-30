@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useDocuments } from '../hooks/useDocuments';
 import { DocumentUpload } from '../components/DocumentUpload';
 import { ProcessingStatus } from '../components/ProcessingStatus';
+import { TermMapper } from '../components/TermMapper';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import {
@@ -34,6 +35,7 @@ import {
   Download,
   Loader2,
   Upload,
+  Tags,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -68,6 +70,7 @@ function getStatusBadgeVariant(status: string) {
 export function Documents() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [processingDocumentId, setProcessingDocumentId] = useState<string | null>(null);
+  const [termMapperDoc, setTermMapperDoc] = useState<{ id: string; name: string } | null>(null);
   const {
     documents,
     isLoadingDocuments,
@@ -189,12 +192,23 @@ export function Documents() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end space-x-2">
-                        {doc.status === 'uploaded' && (
+                        {doc.status === 'completed' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setTermMapperDoc({ id: doc.id, name: doc.original_filename })}
+                            title="Map Terms"
+                          >
+                            <Tags className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {doc.status === 'completed' && (
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleProcess(doc.id)}
                             disabled={isProcessing && processingDocumentId === doc.id}
+                            title="Process Document"
                           >
                             {isProcessing && processingDocumentId === doc.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -204,7 +218,7 @@ export function Documents() {
                           </Button>
                         )}
                         {doc.status === 'completed' && (
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" title="Download">
                             <Download className="h-4 w-4" />
                           </Button>
                         )}
@@ -213,6 +227,7 @@ export function Documents() {
                           size="sm"
                           onClick={() => handleDelete(doc.id)}
                           disabled={isDeleting}
+                          title="Delete"
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
@@ -228,6 +243,15 @@ export function Documents() {
 
       {processingDocumentId && (
         <ProcessingStatus documentId={processingDocumentId} />
+      )}
+
+      {termMapperDoc && (
+        <TermMapper
+          documentId={termMapperDoc.id}
+          documentName={termMapperDoc.name}
+          open={!!termMapperDoc}
+          onOpenChange={(open) => !open && setTermMapperDoc(null)}
+        />
       )}
     </div>
   );

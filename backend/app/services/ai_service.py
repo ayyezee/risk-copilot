@@ -117,8 +117,8 @@ class AnthropicProvider(AIProvider):
 
     async def generate_embeddings(self, texts: list[str]) -> list[list[float]]:
         # Anthropic doesn't have a native embedding API, fall back to OpenAI
-        if not settings.openai_api_key:
-            raise AIServiceError("OpenAI API key required for embeddings with Anthropic provider")
+        if not settings.openai_api_key or settings.openai_api_key.startswith("sk-your-"):
+            raise AIServiceError("Valid OpenAI API key required for embeddings with Anthropic provider")
         openai_client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
         try:
             response = await openai_client.embeddings.create(
