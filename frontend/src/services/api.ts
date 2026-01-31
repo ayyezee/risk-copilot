@@ -124,19 +124,33 @@ export const documentsApi = {
 
   delete: (id: string) => api.delete(`/documents/${id}`),
 
-  process: (documentId: string, options: {
+  // Basic processing (extract text, summary, index)
+  processBasic: (documentId: string, options?: {
+    generate_summary?: boolean;
+    extract_metadata?: boolean;
+    index_for_search?: boolean;
+  }) => api.post(`/documents/${documentId}/process`, options || {}),
+
+  // Full AI processing pipeline (term replacement)
+  process: (documentId: string, options?: {
     reference_example_ids?: string[];
+    top_k_examples?: number;
     protected_terms?: string[];
     min_confidence?: number;
     highlight_changes?: boolean;
     generate_changes_report?: boolean;
-  }) => api.post(`/processing/documents/${documentId}/process`, options),
+  }) => api.post(`/process/documents/${documentId}/process`, options || {}),
 
-  getProcessingStatus: (documentId: string) =>
-    api.get(`/processing/documents/${documentId}/status`),
+  getStatus: (documentId: string) =>
+    api.get(`/documents/${documentId}`),
 
   downloadProcessed: (processedDocumentId: string) =>
-    api.get(`/processing/processed/${processedDocumentId}/download`, {
+    api.get(`/process/outputs/${processedDocumentId}/download`, {
+      responseType: 'blob',
+    }),
+
+  downloadOriginal: (documentId: string) =>
+    api.get(`/documents/${documentId}/download`, {
       responseType: 'blob',
     }),
 

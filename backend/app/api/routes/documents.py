@@ -6,6 +6,7 @@ from typing import Annotated, Any
 
 import magic
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -482,4 +483,55 @@ async def extract_document_terms(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to extract terms: {str(e)}",
+        )
+
+
+@router.get("/{document_id}/download")
+async def download_original_document(
+    document_id: uuid.UUID,
+    current_user: ActiveUser,
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    storage: Annotated[FileStorageService, Depends(get_file_storage_service)],
+) -> StreamingResponse:
+    """Download the original uploaded document."""
+    # Get document
+    result = await db.execute(
+        select(Document).where(
+            Document.id == document_id,
+            Document.owner_id == current_user.id,
+        )
+    )
+    document = result.scalar_one_or_none()
+
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found",
+        )
+
+    try:
+        # Download file from storage
+        print(f"Downloading file from storage path: {document.storage_path}")
+        file_content = await storage.download_file(document.storage_path)
+        print(f"Downloaded {len(file_content)} bytes")
+
+        # Determine content type
+        content_type = document.mime_type or "application/octet-stream"
+
+        # Stream the response
+        from io import BytesIO
+        return StreamingResponse(
+            BytesIO(file_content),
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{document.original_filename}"'
+            },
+        )
+    except Exception as e:
+        import traceback
+        print(f"Download error: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to download file: {str(e)}",
         )
