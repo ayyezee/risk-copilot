@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useDocuments } from '../hooks/useDocuments';
 import { Button } from './ui/button';
 import { Progress } from './ui/progress';
-import { Upload, File, X, CheckCircle2, Loader2 } from 'lucide-react';
+import { Upload, File, X, Loader2 } from 'lucide-react';
 
 interface DocumentUploadProps {
   onSuccess?: () => void;

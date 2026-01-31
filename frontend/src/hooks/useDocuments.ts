@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { documentsApi, batchApi, referenceLibraryApi } from '../services/api';
 import { useAuthStore } from '../stores/authStore';
 
-interface Document {
+export interface Document {
   id: string;
   filename: string;
   original_filename: string;
@@ -15,7 +15,7 @@ interface Document {
   updated_at: string;
 }
 
-interface ProcessedDocument {
+export interface ProcessedDocument {
   id: string;
   document_id: string;
   output_filename: string;
@@ -25,7 +25,7 @@ interface ProcessedDocument {
   created_at: string;
 }
 
-interface BatchJob {
+export interface BatchJob {
   id: string;
   status: string;
   total_documents: number;
@@ -84,15 +84,16 @@ export function useDocuments() {
     },
   });
 
-  // Process document mutation
+  // Process document mutation (full AI pipeline)
   const processMutation = useMutation({
     mutationFn: async ({
       documentId,
       options,
     }: {
       documentId: string;
-      options: {
+      options?: {
         reference_example_ids?: string[];
+        top_k_examples?: number;
         protected_terms?: string[];
         min_confidence?: number;
         highlight_changes?: boolean;
@@ -199,7 +200,8 @@ export function useBatchJobs() {
 
   // Connect to WebSocket for real-time updates
   const connectToJobUpdates = useCallback(
-    (jobId: string, onMessage: (data: unknown) => void, onError?: (error: Event) => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (jobId: string, onMessage: (data: any) => void, onError?: (error: Event) => void) => {
       if (!accessToken) return null;
 
       const ws = batchApi.connectWebSocket(jobId, accessToken);
@@ -287,10 +289,9 @@ export function useReferenceLibrary() {
   const createExampleMutation = useMutation({
     mutationFn: async (data: {
       name: string;
-      category?: string;
+      description?: string;
       original_text: string;
-      corrected_text: string;
-      notes?: string;
+      converted_text: string;
     }) => {
       const response = await referenceLibraryApi.createExample(data);
       return response.data;
@@ -309,10 +310,9 @@ export function useReferenceLibrary() {
       id: string;
       data: {
         name?: string;
-        category?: string;
+        description?: string;
         original_text?: string;
-        corrected_text?: string;
-        notes?: string;
+        converted_text?: string;
       };
     }) => {
       const response = await referenceLibraryApi.updateExample(id, data);

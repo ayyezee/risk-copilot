@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Login } from './pages/Login';
@@ -10,6 +11,7 @@ import { Documents } from './pages/Documents';
 import { Batch } from './pages/Batch';
 import { ReferenceLibraryPage } from './pages/ReferenceLibrary';
 import { Analytics } from './pages/Analytics';
+import { useThemeStore, applyTheme } from './stores/themeStore';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,6 +24,13 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  const { theme } = useThemeStore();
+
+  // Apply theme on mount and when it changes
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>

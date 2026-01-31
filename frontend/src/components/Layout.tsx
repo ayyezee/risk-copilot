@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/utils';
+import { ThemeToggle } from './ThemeToggle';
 
 const navigation = [
   { name: 'Documents', href: '/documents', icon: FileText },
@@ -99,8 +100,14 @@ export function Layout() {
                 </p>
               </div>
               {user?.totp_enabled && (
-                <Shield className="h-4 w-4 text-green-500" title="2FA Enabled" />
+                <span title="2FA Enabled">
+                  <Shield className="h-4 w-4 text-green-500" />
+                </span>
               )}
+            </div>
+            <div className="flex items-center gap-2 mb-3">
+              <ThemeToggle />
+              <span className="text-sm text-muted-foreground">Theme</span>
             </div>
             <Button
               variant="outline"

@@ -15,7 +15,6 @@ export function useAuth() {
     setUser,
     setTokens,
     set2FAVerified,
-    setLoading,
     logout: storeLogout,
     isAuthenticated,
     requires2FA,
@@ -78,15 +77,8 @@ export function useAuth() {
       const response = await authApi.register(email, password, fullName);
       return response.data;
     },
-    onSuccess: async (data) => {
-      // After registration, we need to login to get tokens
-      try {
-        const loginResponse = await authApi.login(data.email, '');
-        // This will fail since we don't have password here
-        // Let's redirect to login instead
-      } catch {
-        // Expected - redirect to login page
-      }
+    onSuccess: async () => {
+      // After registration, redirect to login page
       navigate('/login');
     },
   });
