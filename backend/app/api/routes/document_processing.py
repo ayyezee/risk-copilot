@@ -164,8 +164,8 @@ async def get_reference_examples(
                 owner_id=owner_id,
                 top_k=top_k,
             )
-        except AIServiceError:
-            # AI not configured for similarity search, return empty
+        except (AIServiceError, StorageError):
+            # AI not configured for similarity search or embedding failed, return empty
             # User should specify example_ids explicitly
             return []
 

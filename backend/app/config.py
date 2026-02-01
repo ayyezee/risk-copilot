@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn, field_validator
+from pydantic import Field, PostgresDsn, RedisDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # API
     api_prefix: str = "/api/v1"
-    allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    allowed_origins: str = "http://localhost:3000"
 
     # Database
     database_url: PostgresDsn = Field(
@@ -65,9 +65,7 @@ class Settings(BaseSettings):
 
     # File Processing
     max_file_size_mb: int = 50
-    allowed_file_types: list[str] = Field(
-        default_factory=lambda: ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "text/plain", "text/markdown"]
-    )
+    allowed_file_types: str = "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
 
     # Celery
     celery_broker_url: str = "redis://localhost:6379/1"
@@ -77,12 +75,15 @@ class Settings(BaseSettings):
     sentry_dsn: str | None = None
     log_level: str = "INFO"
 
-    @field_validator("allowed_origins", mode="before")
-    @classmethod
-    def parse_origins(cls, v: str | list[str]) -> list[str]:
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+    @property
+    def allowed_origins_list(self) -> list[str]:
+        """Parse allowed_origins string into list."""
+        return [origin.strip() for origin in self.allowed_origins.split(",")]
+
+    @property
+    def allowed_file_types_list(self) -> list[str]:
+        """Parse allowed_file_types string into list."""
+        return [ft.strip() for ft in self.allowed_file_types.split(",")]
 
     @property
     def max_file_size_bytes(self) -> int:

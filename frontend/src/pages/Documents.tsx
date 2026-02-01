@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useDocuments } from '../hooks/useDocuments';
+import { useDocuments, useReferenceLibrary } from '../hooks/useDocuments';
 import { documentsApi } from '../services/api';
 import { DocumentUpload } from '../components/DocumentUpload';
 import { ProcessingStatus } from '../components/ProcessingStatus';
@@ -85,6 +85,9 @@ export function Documents() {
     isProcessing,
   } = useDocuments();
 
+  // Get all reference examples to pass their IDs during processing
+  const { examples: referenceExamples } = useReferenceLibrary();
+
   const [processResult, setProcessResult] = useState<{
     success: boolean;
     message: string;
@@ -98,7 +101,10 @@ export function Documents() {
     setProcessingDocumentId(documentId);
     setProcessResult(null);
     try {
+      // Pass all reference example IDs to avoid needing OpenAI embeddings for similarity search
+      const referenceExampleIds = referenceExamples.map(ex => ex.id);
       const result = await processDocument(documentId, {
+        reference_example_ids: referenceExampleIds.length > 0 ? referenceExampleIds : undefined,
         highlight_changes: true,
         generate_changes_report: true,
       });

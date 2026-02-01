@@ -51,7 +51,7 @@ class DocumentProcessor:
             "text/markdown": DocumentType.MARKDOWN,
         }
 
-        if mime_type not in settings.allowed_file_types:
+        if mime_type not in settings.allowed_file_types_list:
             raise ValidationError(f"File type '{mime_type}' is not supported")
 
         doc_type = mime_to_doctype.get(mime_type)

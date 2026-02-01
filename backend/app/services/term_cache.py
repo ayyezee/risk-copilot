@@ -104,7 +104,8 @@ class TermCache:
         Args:
             redis_url: Redis connection URL. If not provided, uses settings.
         """
-        self.redis_url = redis_url or settings.redis_url
+        # Convert RedisDsn to string if needed
+        self.redis_url = redis_url or str(settings.redis_url)
         self._client: redis.Redis | None = None
 
     async def _get_client(self) -> redis.Redis:
