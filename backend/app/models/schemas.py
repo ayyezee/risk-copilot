@@ -396,6 +396,36 @@ class ApplyReplacementsResponse(BaseModel):
     total_replacements: int
 
 
+# Section Detection schemas
+class DetectedSection(BaseModel):
+    """Schema for a detected document section."""
+
+    id: str  # Generated UUID for selection tracking
+    title: str
+    description: str | None = None
+    start_page: int = Field(ge=1)
+    end_page: int = Field(ge=1)
+    section_type: str | None = None  # e.g., "definitions", "risk_disclosures", "terms"
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class SectionDetectionResponse(BaseModel):
+    """Schema for section detection response."""
+
+    document_id: uuid.UUID
+    sections: list[DetectedSection]
+    page_count: int | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
+class PageRange(BaseModel):
+    """Schema for a page range selection."""
+
+    start_page: int = Field(ge=1)
+    end_page: int = Field(ge=1)
+    label: str | None = None  # Optional user-provided label
+
+
 # Document Processing Pipeline schemas
 class ProcessDocumentRequest(BaseModel):
     """Schema for triggering the full document processing pipeline."""
@@ -406,6 +436,9 @@ class ProcessDocumentRequest(BaseModel):
     min_confidence: float = Field(default=0.7, ge=0.0, le=1.0)
     highlight_changes: bool = True
     generate_changes_report: bool = True
+    # Section selection options
+    selected_page_ranges: list[PageRange] | None = None  # Process only these page ranges
+    use_full_document_for_context: bool = True  # Use full doc for definition lookups
 
 
 class ProcessingJobStatus(BaseModel):

@@ -84,6 +84,14 @@ export function useDocuments() {
     },
   });
 
+  // Detect sections mutation
+  const detectSectionsMutation = useMutation({
+    mutationFn: async (documentId: string) => {
+      const response = await documentsApi.detectSections(documentId);
+      return response.data;
+    },
+  });
+
   // Process document mutation (full AI pipeline)
   const processMutation = useMutation({
     mutationFn: async ({
@@ -98,6 +106,8 @@ export function useDocuments() {
         min_confidence?: number;
         highlight_changes?: boolean;
         generate_changes_report?: boolean;
+        selected_page_ranges?: { start_page: number; end_page: number; label?: string }[];
+        use_full_document_for_context?: boolean;
       };
     }) => {
       const response = await documentsApi.process(documentId, options);
@@ -124,6 +134,11 @@ export function useDocuments() {
     [processMutation]
   );
 
+  const detectSections = useCallback(
+    (documentId: string) => detectSectionsMutation.mutateAsync(documentId),
+    [detectSectionsMutation]
+  );
+
   return {
     documents: documentsData?.items || [],
     totalDocuments: documentsData?.total || 0,
@@ -143,6 +158,10 @@ export function useDocuments() {
     processDocument,
     isProcessing: processMutation.isPending,
     processError: processMutation.error,
+
+    detectSections,
+    isDetectingSections: detectSectionsMutation.isPending,
+    detectSectionsError: detectSectionsMutation.error,
   };
 }
 

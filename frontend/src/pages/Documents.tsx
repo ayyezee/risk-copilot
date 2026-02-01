@@ -4,6 +4,7 @@ import { documentsApi } from '../services/api';
 import { DocumentUpload } from '../components/DocumentUpload';
 import { ProcessingStatus } from '../components/ProcessingStatus';
 import { TermMapper } from '../components/TermMapper';
+import { SectionSelector, DetectedSection, PageRange } from '../components/SectionSelector';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { ActionButton, ActionButtonGroup } from '../components/ui/action-button';
@@ -40,6 +41,7 @@ import {
   Settings2,
   CheckCircle,
   XCircle,
+  Layers,
 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
 import { formatDistanceToNow } from 'date-fns';
@@ -76,6 +78,13 @@ export function Documents() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [processingDocumentId, setProcessingDocumentId] = useState<string | null>(null);
   const [termMapperDoc, setTermMapperDoc] = useState<{ id: string; name: string } | null>(null);
+  const [sectionSelectorDoc, setSectionSelectorDoc] = useState<{ id: string; name: string } | null>(null);
+
+  // Store detected sections and selected page ranges per document
+  const [documentSections, setDocumentSections] = useState<Record<string, {
+    sections: DetectedSection[];
+    selectedPageRanges: PageRange[];
+  }>>({});
   const {
     documents,
     isLoadingDocuments,
@@ -97,25 +106,59 @@ export function Documents() {
   // Track which documents have been processed (documentId -> outputFileId)
   const [processedDocs, setProcessedDocs] = useState<Record<string, string>>({});
 
+  const handleSectionsSelected = (
+    documentId: string,
+    sections: DetectedSection[],
+    pageRanges: PageRange[]
+  ) => {
+    // Convert selected sections to page ranges
+    const sectionPageRanges = sections.map(s => ({
+      start_page: s.start_page,
+      end_page: s.end_page,
+      label: s.title,
+    }));
+
+    // Combine with manual page ranges
+    const allPageRanges = [...sectionPageRanges, ...pageRanges];
+
+    setDocumentSections(prev => ({
+      ...prev,
+      [documentId]: {
+        sections,
+        selectedPageRanges: allPageRanges,
+      },
+    }));
+  };
+
   const handleProcess = async (documentId: string) => {
     setProcessingDocumentId(documentId);
     setProcessResult(null);
     try {
       // Pass all reference example IDs to avoid needing OpenAI embeddings for similarity search
-      const referenceExampleIds = referenceExamples.map(ex => ex.id);
+      const referenceExampleIds = referenceExamples.map((ex: { id: string }) => ex.id);
+
+      // Get selected page ranges for this document (if configured)
+      const docSections = documentSections[documentId];
+      const selectedPageRanges = docSections?.selectedPageRanges;
+
       const result = await processDocument(documentId, {
         reference_example_ids: referenceExampleIds.length > 0 ? referenceExampleIds : undefined,
         highlight_changes: true,
         generate_changes_report: true,
+        selected_page_ranges: selectedPageRanges && selectedPageRanges.length > 0 ? selectedPageRanges : undefined,
+        use_full_document_for_context: true,
       });
       console.log('Processing result:', result);
       // Store the processed output file ID for this document
       if (result.output_file_id) {
         setProcessedDocs(prev => ({ ...prev, [documentId]: result.output_file_id }));
       }
+      const sectionInfo = selectedPageRanges && selectedPageRanges.length > 0
+        ? ` (${selectedPageRanges.length} section${selectedPageRanges.length !== 1 ? 's' : ''} selected)`
+        : '';
       setProcessResult({
         success: true,
-        message: `Document processed successfully! ${result.total_replacements || 0} replacements made.`,
+        message: `Document processed successfully! ${result.total_replacements || 0} replacements made${sectionInfo}.`,
         documentId,
       });
     } catch (error) {
@@ -138,13 +181,34 @@ export function Documents() {
   const handleDownloadProcessed = async (outputId: string, filename: string) => {
     try {
       const response = await documentsApi.downloadProcessed(outputId);
-      const blob = new Blob([response.data], {
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      });
+      // Get content type from response headers, default to docx
+      const contentType = response.headers['content-type'] ||
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+      // Get filename from Content-Disposition header if available
+      const contentDisposition = response.headers['content-disposition'];
+      let downloadFilename = `processed_${filename}`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?([^";\n]+)"?/);
+        if (filenameMatch && filenameMatch[1]) {
+          downloadFilename = filenameMatch[1];
+        }
+      }
+
+      // Ensure the filename has .docx extension since processed output is always DOCX
+      if (!downloadFilename.toLowerCase().endsWith('.docx')) {
+        downloadFilename = downloadFilename.replace(/\.[^/.]+$/, '') + '.docx';
+      }
+
+      // response.data is already a Blob when responseType: 'blob' is used
+      // Use it directly instead of wrapping in another Blob which can corrupt the data
+      const blob = response.data instanceof Blob
+        ? response.data
+        : new Blob([response.data], { type: contentType });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `processed_${filename}`;
+      link.download = downloadFilename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -158,9 +222,12 @@ export function Documents() {
   const handleDownloadOriginal = async (documentId: string, filename: string) => {
     try {
       const response = await documentsApi.downloadOriginal(documentId);
-      const blob = new Blob([response.data], {
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-      });
+      // response.data is already a Blob when responseType: 'blob' is used
+      const blob = response.data instanceof Blob
+        ? response.data
+        : new Blob([response.data], {
+            type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          });
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -293,6 +360,11 @@ export function Documents() {
                               onClick={() => setTermMapperDoc({ id: doc.id, name: doc.original_filename })}
                             />
                             <ActionButton
+                              tooltip={documentSections[doc.id] ? `${documentSections[doc.id].selectedPageRanges.length} sections selected` : "Select sections"}
+                              icon={<Layers className="h-4 w-4" />}
+                              onClick={() => setSectionSelectorDoc({ id: doc.id, name: doc.original_filename })}
+                            />
+                            <ActionButton
                               tooltip="Process with AI"
                               icon={<Sparkles className="h-4 w-4" />}
                               onClick={() => handleProcess(doc.id)}
@@ -344,6 +416,20 @@ export function Documents() {
           documentName={termMapperDoc.name}
           open={!!termMapperDoc}
           onOpenChange={(open) => !open && setTermMapperDoc(null)}
+        />
+      )}
+
+      {sectionSelectorDoc && (
+        <SectionSelector
+          documentId={sectionSelectorDoc.id}
+          documentName={sectionSelectorDoc.name}
+          open={!!sectionSelectorDoc}
+          onOpenChange={(open) => !open && setSectionSelectorDoc(null)}
+          onSectionsSelected={(sections, pageRanges) =>
+            handleSectionsSelected(sectionSelectorDoc.id, sections, pageRanges)
+          }
+          initialSections={documentSections[sectionSelectorDoc.id]?.sections}
+          initialPageRanges={documentSections[sectionSelectorDoc.id]?.selectedPageRanges}
         />
       )}
     </div>

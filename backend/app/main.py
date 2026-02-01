@@ -66,6 +66,7 @@ def create_application() -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Content-Disposition", "Content-Type", "Content-Length"],
     )
 
     # Add request logging middleware

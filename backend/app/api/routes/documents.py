@@ -14,6 +14,7 @@ from app.api.middleware.auth import ActiveUser
 from app.core.exceptions import FileProcessingError, ValidationError
 from app.models.database import Document, DocumentStatus, get_db_session
 from app.models.schemas import (
+    DetectedSection,
     DocumentListResponse,
     DocumentParseResponse,
     DocumentProcessRequest,
@@ -23,6 +24,7 @@ from app.models.schemas import (
     DocumentResponse,
     DocumentSectionResponse,
     DocumentUploadResponse,
+    SectionDetectionResponse,
 )
 from app.services.document_parser import DocumentParser, get_document_parser
 from app.services.document_processor import DocumentProcessor, get_document_processor
@@ -483,6 +485,103 @@ async def extract_document_terms(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to extract terms: {str(e)}",
+        )
+
+
+@router.post("/{document_id}/detect-sections", response_model=SectionDetectionResponse)
+async def detect_document_sections(
+    document_id: uuid.UUID,
+    current_user: ActiveUser,
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> SectionDetectionResponse:
+    """Detect logical sections in a document using AI.
+
+    Analyzes the document structure to identify major sections with their
+    page ranges. Users can then select which sections to process for
+    term replacement.
+
+    Returns a list of detected sections with:
+    - Section title
+    - Page range (start_page, end_page)
+    - Section type (e.g., definitions, risk_disclosures)
+    - Confidence score
+    """
+    import traceback
+
+    try:
+        # Get document
+        result = await db.execute(
+            select(Document).where(
+                Document.id == document_id,
+                Document.owner_id == current_user.id,
+            )
+        )
+        document = result.scalar_one_or_none()
+
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found",
+            )
+
+        if not document.extracted_text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Document has not been parsed yet. Upload using /upload endpoint first.",
+            )
+
+        # Get already-parsed headers from metadata as hints
+        known_headers = None
+        if document.doc_metadata:
+            known_headers = document.doc_metadata.get("headers", [])
+
+        # Detect sections using AI
+        from app.services.section_detector import get_section_detector
+        from app.core.exceptions import AIServiceError
+
+        try:
+            detector = get_section_detector()
+        except AIServiceError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"AI service not configured: {e}",
+            )
+
+        detection_result = await detector.detect_sections(
+            document_text=document.extracted_text,
+            page_count=document.page_count,
+            known_headers=known_headers,
+        )
+
+        # Convert to response schema
+        sections = [
+            DetectedSection(
+                id=s.id,
+                title=s.title,
+                description=s.description,
+                start_page=s.start_page,
+                end_page=s.end_page,
+                section_type=s.section_type,
+                confidence=s.confidence,
+            )
+            for s in detection_result.sections
+        ]
+
+        return SectionDetectionResponse(
+            document_id=document_id,
+            sections=sections,
+            page_count=document.page_count,
+            warnings=detection_result.warnings,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Section detection error: {e}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to detect sections: {str(e)}",
         )
 
 

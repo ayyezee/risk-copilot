@@ -139,7 +139,26 @@ export const documentsApi = {
     min_confidence?: number;
     highlight_changes?: boolean;
     generate_changes_report?: boolean;
+    selected_page_ranges?: { start_page: number; end_page: number; label?: string }[];
+    use_full_document_for_context?: boolean;
   }) => api.post(`/process/documents/${documentId}/process`, options || {}),
+
+  // Detect document sections using AI
+  detectSections: (documentId: string) =>
+    api.post<{
+      document_id: string;
+      sections: {
+        id: string;
+        title: string;
+        description?: string;
+        start_page: number;
+        end_page: number;
+        section_type?: string;
+        confidence: number;
+      }[];
+      page_count?: number;
+      warnings: string[];
+    }>(`/documents/${documentId}/detect-sections`),
 
   getStatus: (documentId: string) =>
     api.get(`/documents/${documentId}`),

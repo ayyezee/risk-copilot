@@ -16,7 +16,6 @@ import {
   CheckCircle2,
   XCircle,
   Download,
-  FileText,
 } from 'lucide-react';
 
 interface ProcessingStatusProps {
@@ -46,7 +45,7 @@ export function ProcessingStatus({ documentId, onComplete }: ProcessingStatusPro
   const { data: status, isLoading } = useQuery({
     queryKey: ['processingStatus', documentId],
     queryFn: async () => {
-      const response = await documentsApi.getProcessingStatus(documentId);
+      const response = await documentsApi.getStatus(documentId);
       return response.data as ProcessingResult;
     },
     refetchInterval: (query) => {

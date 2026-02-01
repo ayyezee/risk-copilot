@@ -19,6 +19,7 @@ from app.models.schemas import (
     DocumentAnalysisRequest,
     DocumentAnalysisResponse,
     GeneratedDocumentResponse,
+    PageRange,
     ProcessDocumentRequest,
     ProcessDocumentResponse,
     ReplacementMatchDetail,
@@ -41,6 +42,55 @@ from app.services.pgvector_store import PgVectorStore, get_pgvector_store
 from app.services.term_cache import TermCache, get_term_cache
 
 router = APIRouter(prefix="/process", tags=["document-processing"])
+
+
+def filter_text_by_page_ranges(
+    full_text: str,
+    doc_metadata: dict | None,
+    page_ranges: list[PageRange],
+) -> str:
+    """Filter document text to only include content from specified page ranges.
+
+    Uses section metadata with page numbers to extract content from the
+    specified pages. Falls back to the full text if page mapping isn't available.
+
+    Args:
+        full_text: Full document text
+        doc_metadata: Document metadata containing sections with page numbers
+        page_ranges: List of page ranges to include
+
+    Returns:
+        Filtered text containing only content from the specified pages
+    """
+    if not page_ranges or not doc_metadata:
+        return full_text
+
+    # Get sections from metadata
+    sections = doc_metadata.get("sections", [])
+    if not sections:
+        return full_text
+
+    # Collect content from sections that fall within the specified page ranges
+    filtered_parts = []
+
+    for section in sections:
+        page_num = section.get("page_number")
+        content = section.get("content", "")
+
+        if not page_num or not content:
+            continue
+
+        # Check if this section's page is within any of the specified ranges
+        for pr in page_ranges:
+            if pr.start_page <= page_num <= pr.end_page:
+                filtered_parts.append(content)
+                break
+
+    if not filtered_parts:
+        # No sections matched, return full text to avoid empty processing
+        return full_text
+
+    return "\n\n".join(filtered_parts)
 
 
 async def get_document_content(
@@ -440,15 +490,30 @@ async def process_document(
             detail="Document has no extracted text. Upload and parse it first.",
         )
 
-    # Create DocumentContent from stored data
+    # Determine text to process based on section selection
+    if request.selected_page_ranges:
+        # Filter to only selected page ranges
+        text_to_process = filter_text_by_page_ranges(
+            full_text=document.extracted_text,
+            doc_metadata=document.doc_metadata,
+            page_ranges=request.selected_page_ranges,
+        )
+    else:
+        # Process full document
+        text_to_process = document.extracted_text
+
+    # Create DocumentContent for processing (may be filtered)
     document_content = DocumentContent(
-        full_text=document.extracted_text,
+        full_text=text_to_process,
         sections=[],
         title=document.original_filename,
         page_count=document.page_count or 0,
-        word_count=len(document.extracted_text.split()),
+        word_count=len(text_to_process.split()),
         metadata=document.doc_metadata or {},
     )
+
+    # For context/definition lookups, use full document if requested
+    context_text = document.extracted_text if request.use_full_document_for_context else text_to_process
 
     # Get reference examples
     reference_examples = await get_reference_examples(
@@ -456,7 +521,7 @@ async def process_document(
         pgvector=pgvector,
         owner_id=current_user.id,
         example_ids=request.reference_example_ids,
-        document_text=document_content.full_text,
+        document_text=context_text,  # Use full doc for similarity search
         top_k=request.top_k_examples,
     )
 
