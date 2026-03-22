@@ -1,10 +1,10 @@
-# Werdsmith
+# Risk Copilot
 
 An AI-powered document processing platform for intelligent term replacement and document transformation. Built specifically for financial document workflows, particularly fund-of-funds (FoF) structures and Insurance Dedicated Funds (IDFs).
 
 ## Overview
 
-Werdsmith analyzes documents, identifies terms requiring replacement based on reference examples, and generates transformed documents with AI-guided suggestions. It uses semantic search to find similar reference documents and leverages Claude's intelligence for context-aware replacements.
+Risk Copilot analyzes documents, identifies terms requiring replacement based on reference examples, and generates transformed documents with AI-guided suggestions. It uses semantic search to find similar reference documents and leverages Claude's intelligence for context-aware replacements.
 
 ### Key Capabilities
 
@@ -35,7 +35,7 @@ Werdsmith analyzes documents, identifies terms requiring replacement based on re
 ## Project Structure
 
 ```
-werdsmith/
+risk-copilot/
 ├── backend/
 │   ├── app/
 │   │   ├── api/routes/           # API endpoints
@@ -141,7 +141,7 @@ Alternative provider:
 
 ## Fund-of-Funds Intelligence
 
-Werdsmith understands complex fund structures where the same term can have different meanings:
+Risk Copilot understands complex fund structures where the same term can have different meanings:
 
 **Example: "Limited Partners"**
 - When referring to IDF investors → Replace with "Series Limited Partners"
